@@ -1,4 +1,6 @@
 // DOM elements
+
+
 const uploadForm = document.getElementById("uploadForm");
 const audioFileInput = document.getElementById("audioFile");
 const processBtn = document.getElementById("processBtn");
@@ -16,6 +18,12 @@ const summaryText = document.getElementById("summaryText");
 const actionItemsList = document.getElementById("actionItemsList");
 const transcriptText = document.getElementById("transcriptText");
 const transcriptFileInfo = document.getElementById("transcriptFileInfo");
+
+// Post-processing actions (PDF / discard)
+const postActions = document.getElementById("postActions");
+const downloadPdfBtn = document.getElementById("downloadPdfBtn");
+const discardBtn = document.getElementById("discardBtn");
+
 
 // Live recording elements
 const recordBtn = document.getElementById("recordBtn");
@@ -39,6 +47,10 @@ function resetUI() {
   actionItemsList.innerHTML = "";
   transcriptText.textContent = "";
   transcriptFileInfo.textContent = "";
+  // Hide post actions
+  if (postActions) postActions.style.display = "none";
+  if (downloadPdfBtn) downloadPdfBtn.href = "#";
+  if (discardBtn) discardBtn.onclick = null;
 }
 
 function showError(message) {
@@ -134,6 +146,38 @@ async function processFormData(formData, initialLabel = "Processing…", transcr
     } else {
       transcriptFileInfo.textContent = "";
     }
+
+    // ---- NEW: Post-processing buttons (Download PDF + Discard) ----
+    if (postActions && downloadPdfBtn && discardBtn && data.download_url && data.discard_url) {
+      postActions.style.display = "block";
+
+      // Download PDF
+      downloadPdfBtn.href = data.download_url;
+
+      // Discard results
+      discardBtn.onclick = async () => {
+        const ok = confirm("Discard transcript/summary/action items for this meeting? This cannot be undone.");
+        if (!ok) return;
+
+        try {
+          const resp = await fetch(data.discard_url, { method: "POST" });
+          if (!resp.ok) {
+            alert("Discard failed.");
+            return;
+          }
+          resetUI();
+          alert("Discarded.");
+        } catch (e) {
+          console.error(e);
+          alert("Discard failed (network error).");
+        }
+      };
+    } else if (postActions) {
+      postActions.style.display = "none";
+    }
+
+
+
   } catch (err) {
     console.error("Request failed:", err);
     setProgress(0, "Error");

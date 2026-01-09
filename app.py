@@ -4,6 +4,19 @@ import json
 import logging
 import subprocess
 
+import json
+import re
+from datetime import datetime
+from io import BytesIO
+
+from flask import send_file, abort, url_for
+
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, ListFlowable, ListItem
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import inch
+
+
 from flask import Flask, render_template, request, jsonify
 from werkzeug.utils import secure_filename
 from openai import OpenAI
@@ -111,6 +124,126 @@ Transcript:
     action_items = data.get("action_items", [])
     return summary, action_items
 
+#Helper functions 
+_MEETING_ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,80}$")
+
+def new_meeting_id() -> str:
+    # 20260109_104455_123
+    return datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+
+def safe_meeting_id(meeting_id: str) -> str:
+    if not meeting_id or not _MEETING_ID_RE.match(meeting_id):
+        raise ValueError("Invalid meeting_id")
+    return meeting_id
+
+def meeting_json_path(meeting_id: str) -> str:
+    meeting_id = safe_meeting_id(meeting_id)
+    return os.path.join(TRANSCRIPT_FOLDER, f"{meeting_id}.json")
+
+def save_meeting_artifacts(meeting_id: str, filename: str, transcript: str, summary: str, action_items: list) -> None:
+    payload = {
+        "meeting_id": meeting_id,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "source_filename": filename,
+        "transcript": transcript or "",
+        "summary": summary or "",
+        "action_items": action_items or [],
+    }
+    with open(meeting_json_path(meeting_id), "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+
+def load_meeting_artifacts(meeting_id: str) -> dict:
+    path = meeting_json_path(meeting_id)
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def delete_meeting_artifacts(meeting_id: str) -> None:
+    # Delete the JSON and (optionally) any matching transcript text file if you want.
+    # We’ll delete ONLY the JSON by default (safe).
+    path = meeting_json_path(meeting_id)
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+
+def build_pdf_bytes(data: dict) -> bytes:
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=letter,
+        leftMargin=0.8 * inch,
+        rightMargin=0.8 * inch,
+        topMargin=0.8 * inch,
+        bottomMargin=0.8 * inch,
+    )
+    styles = getSampleStyleSheet()
+
+    story = []
+    story.append(Paragraph("Meeting Assistant Report", styles["Title"]))
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph(f"Meeting ID: {data.get('meeting_id','')}", styles["Normal"]))
+    story.append(Paragraph(f"Created: {data.get('created_at','')}", styles["Normal"]))
+    src = data.get("source_filename") or ""
+    if src:
+        story.append(Paragraph(f"Source file: {src}", styles["Normal"]))
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph("Summary", styles["Heading2"]))
+    story.append(Paragraph((data.get("summary") or "").replace("\n", "<br/>"), styles["BodyText"]))
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph("Action Items", styles["Heading2"]))
+    items = data.get("action_items") or []
+    if items:
+        story.append(
+            ListFlowable(
+                [ListItem(Paragraph(str(x), styles["BodyText"])) for x in items],
+                bulletType="1",
+            )
+        )
+    else:
+        story.append(Paragraph("No action items found.", styles["BodyText"]))
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph("Transcript", styles["Heading2"]))
+    story.append(Paragraph((data.get("transcript") or "").replace("\n", "<br/>"), styles["BodyText"]))
+
+    doc.build(story)
+    return buf.getvalue()
+# End helper functions
+
+@app.route("/download/<meeting_id>", methods=["GET"])
+def download_pdf(meeting_id):
+    try:
+        data = load_meeting_artifacts(meeting_id)
+    except (ValueError, FileNotFoundError):
+        abort(404)
+
+    pdf_bytes = build_pdf_bytes(data)
+    filename = f"{meeting_id}_meeting_report.pdf"
+
+    return send_file(
+        BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=filename,
+    )
+
+@app.route("/discard/<meeting_id>", methods=["POST"])
+def discard_meeting(meeting_id):
+    try:
+        safe_meeting_id(meeting_id)
+        delete_meeting_artifacts(meeting_id)
+    except ValueError:
+        abort(400)
+
+    # If your UI is JS-driven, returning JSON is easiest
+    return jsonify({"status": "discarded", "meeting_id": meeting_id})
+
+
 
 @app.errorhandler(413)
 def file_too_large(e):
@@ -124,6 +257,82 @@ def index():
 
 @app.route("/process", methods=["POST"])
 def process():
+    cleanup_old_files()
+
+    if "audio_file" not in request.files:
+        return jsonify({"error": "No file part in request."}), 400
+
+    file = request.files["audio_file"]
+    if file.filename == "":
+        return jsonify({"error": "No file selected."}), 400
+
+    # Save audio file
+    filename = secure_filename(file.filename)
+    save_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+    file.save(save_path)
+    logger.info("Saved file to: %s", os.path.abspath(save_path))
+
+    # Transcribe
+    try:
+        transcript_text = transcribe_audio_file(save_path)
+    except Exception as e:
+        logger.exception("Error processing the audio file")
+        return jsonify({"error": f"Error processing the audio file: {e}"}), 500
+
+    # Save transcript as .txt (your existing behavior)
+    base, _ = os.path.splitext(filename)
+    transcript_filename = f"{base}.txt"
+    transcript_path = os.path.join(TRANSCRIPT_FOLDER, transcript_filename)
+    try:
+        with open(transcript_path, "w", encoding="utf-8") as f:
+            f.write(transcript_text)
+        logger.info("Saved transcript to: %s", os.path.abspath(transcript_path))
+    except Exception as e:
+        logger.exception("Error saving transcript")
+        transcript_filename = ""
+
+    # Summarize + extract actions
+    try:
+        summary, action_items = summarize_and_extract_actions(transcript_text)
+    except Exception as e:
+        logger.exception("Error summarizing transcript")
+        summary = ""
+        action_items = []
+
+    # NEW: Save canonical meeting artifact (JSON) keyed by meeting_id
+    meeting_id = new_meeting_id()
+    try:
+        save_meeting_artifacts(
+            meeting_id=meeting_id,
+            filename=filename,
+            transcript=transcript_text,
+            summary=summary,
+            action_items=action_items,
+        )
+        logger.info("Saved meeting artifacts JSON: %s", os.path.abspath(meeting_json_path(meeting_id)))
+    except Exception:
+        logger.exception("Error saving meeting artifacts JSON")
+        # Not fatal; user can still see text
+
+    # Optionally delete the audio file after processing
+    try:
+        os.remove(save_path)
+        logger.info("Deleted audio file: %s", save_path)
+    except Exception as e:
+        logger.warning("Could not delete audio file %s: %s", save_path, e)
+
+    return jsonify(
+        {
+            "meeting_id": meeting_id,
+            "transcript": transcript_text,
+            "summary": summary,
+            "action_items": action_items,
+            "transcript_file": transcript_filename,
+            # NEW: URLs for UI buttons
+            "download_url": url_for("download_pdf", meeting_id=meeting_id),
+            "discard_url": url_for("discard_meeting", meeting_id=meeting_id),
+        }
+    )
     cleanup_old_files()
 
     if "audio_file" not in request.files:
