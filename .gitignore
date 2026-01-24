@@ -1,20 +1,19 @@
 # Python
 __pycache__/
-*.py[cod]
-
-# Virtual environments
+*.pyc
+*.pyo
+*.pyd
 .venv/
-venv/
 env/
+venv/
 
-# Logs and generated content
-logs/
-transcripts/
-
-# OS / editor
-.DS_Store
-.vscode/
-.idea/
-
-# Secrets
+# Environment / secrets
 .env
+
+# App-generated data
+uploads/
+transcripts/
+logs/
+
+# OS junk
+.DS_Store
