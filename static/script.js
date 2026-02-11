@@ -21,6 +21,10 @@ const actionItemsList = document.getElementById("actionItemsList");
 const transcriptText = document.getElementById("transcriptText");
 const transcriptFileInfo = document.getElementById("transcriptFileInfo");
 
+// Copy buttons
+const copySummaryBtn = document.getElementById("copySummaryBtn");
+const copyTranscriptBtn = document.getElementById("copyTranscriptBtn");
+
 // Translation elements
 const translationControls = document.getElementById("translationControls");
 const targetLanguageSelect = document.getElementById("targetLanguageSelect");
@@ -240,6 +244,7 @@ async function processFormData(formData, initialLabel = "Processing…", transcr
     currentMeetingData.englishSummary = data.english_summary || data.summary || "(No summary returned)";
     currentMeetingData.englishTranscript = data.english_transcript || data.transcript || "(No transcript)";
     currentMeetingData.actionItems = data.action_items || [];
+    currentMeetingData.englishActionItems = data.english_action_items || data.action_items || [];
     currentMeetingData.currentDisplayLanguage = currentMeetingData.originalLanguage;
 
     // Update results
@@ -682,6 +687,41 @@ translateBtn.addEventListener("click", async () => {
   } finally {
     translateBtn.disabled = false;
     targetLanguageSelect.disabled = false;
+  }
+});
+
+// ---- Copy button functionality ----
+function copyToClipboard(text, button) {
+  navigator.clipboard.writeText(text).then(() => {
+    const originalText = button.textContent;
+    button.textContent = "✓ Copied!";
+    button.classList.add("btn-success");
+    button.classList.remove("btn-outline-secondary");
+
+    setTimeout(() => {
+      button.textContent = originalText;
+      button.classList.remove("btn-success");
+      button.classList.add("btn-outline-secondary");
+    }, 2000);
+  }).catch(err => {
+    console.error("Failed to copy:", err);
+    alert("Failed to copy to clipboard. Try again.");
+  });
+}
+
+copySummaryBtn.addEventListener("click", () => {
+  if (summaryText.textContent) {
+    copyToClipboard(summaryText.textContent, copySummaryBtn);
+  } else {
+    alert("No summary to copy yet.");
+  }
+});
+
+copyTranscriptBtn.addEventListener("click", () => {
+  if (transcriptText.textContent) {
+    copyToClipboard(transcriptText.textContent, copyTranscriptBtn);
+  } else {
+    alert("No transcript to copy yet.");
   }
 });
 

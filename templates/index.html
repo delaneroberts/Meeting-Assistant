@@ -167,14 +167,24 @@
                 </div>
               </div>
 
-              <h2 class="h5">Summary</h2>
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h2 class="h5 mb-0">Summary</h2>
+                <button class="btn btn-sm btn-outline-secondary" id="copySummaryBtn" title="Copy to clipboard">
+                  📋 Copy
+                </button>
+              </div>
               <pre id="summaryText" class="bg-body-tertiary p-2 rounded mb-3"></pre>
 
 
               <h2 class="h6">Action Items</h2>
               <ul id="actionItemsList"></ul>
 
-              <h2 class="h6 mt-3">Full Transcript</h2>
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h2 class="h6 mt-3 mb-0">Full Transcript</h2>
+                <button class="btn btn-sm btn-outline-secondary" id="copyTranscriptBtn" title="Copy to clipboard">
+                  📋 Copy
+                </button>
+              </div>
               <pre id="transcriptText" class="bg-body-tertiary p-2 rounded"></pre>
 
               <p class="mt-2 mb-0 text-muted small" id="transcriptFileInfo"></p>

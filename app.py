@@ -549,6 +549,7 @@ def process():
 
     # Generate original language version if not English
     original_summary = summary
+    original_action_items = action_items
     if was_translated and detected_language and detected_language.lower() != "english":
         try:
             translate_prompt = f"""Translate this meeting summary to {detected_language}. Keep the structure and meaning intact. Only provide the translated text.
@@ -565,6 +566,26 @@ Summary:
         except Exception as e:
             logger.warning("Could not translate summary to %s: %s", detected_language, e)
             original_summary = summary  # Fallback to English
+        
+        # Translate action items
+        try:
+            action_items_text = "\n".join(action_items)
+            action_items_prompt = f"""Translate these action items to {detected_language}. Keep the structure and meaning intact. Return as a numbered list.
+
+Action Items:
+{action_items_text}"""
+            action_items_response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": action_items_prompt}],
+                max_tokens=1024,
+            )
+            translated_items_text = action_items_response.choices[0].message.content.strip()
+            # Parse the translated items back into a list
+            original_action_items = [item.strip() for item in translated_items_text.split('\n') if item.strip()]
+            logger.info("Translated action items to %s", detected_language)
+        except Exception as e:
+            logger.warning("Could not translate action items to %s: %s", detected_language, e)
+            original_action_items = action_items  # Fallback to English
 
     # Save canonical meeting artifact JSON
     meeting_id = new_meeting_id()
@@ -604,7 +625,8 @@ Summary:
             "english_transcript": translated_transcript,
             "summary": original_summary,
             "english_summary": summary,
-            "action_items": action_items,
+            "action_items": original_action_items,
+            "english_action_items": action_items,
             "transcript_file": transcript_filename,
             "original_language": detected_language,
             "was_translated": was_translated,
