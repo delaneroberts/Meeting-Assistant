@@ -166,14 +166,14 @@ class Meeting(db.Model):
 
 ---
 
-#### 5. **Weekly Report Aggregation**
+#### 5. **Meeting Titles are Important**
 
-**New Feature** not in original plan:
-- Aggregate multiple meetings into weekly report
-- Calculate stats (total meetings, total time, key topics)
-- Format as printable/shareable report
+**Clarification**: "Weekly Sync" is just a meeting TITLE, not a special report feature
+- Meetings need custom titles (not auto-generated)
+- Titles appear in list view, summary screen, reports
+- Users should set title when creating/uploading meeting
 
-**Action**: Add to Phase 3 features, but design database for it now
+**Action**: Add `title` field to Meeting model in Phase 1
 
 ---
 
@@ -275,32 +275,35 @@ class Meeting(db.Model):
 
 1. **Add Database Fields** (Phase 1)
    ```python
-   meeting_type      # 'sync', 'standup', 'planning', etc
-   attendees         # JSON array of names
+   title              # Meeting title (set by user or auto-detect)
+   meeting_type       # 'sync', 'standup', 'planning', etc (optional)
+   attendees         # JSON array of names (optional)
    duration_minutes  # Calculate from recording
-   week_number       # For weekly reports
-   topics            # JSON array (extracted keywords)
+   topics            # JSON array (extracted keywords, optional)
    ```
 
 2. **Expand API** (Phase 1)
    ```
    GET /api/v1/meetings           # List with filters
-   GET /api/v1/meetings?week=8    # Weekly aggregate
-   GET /api/v1/search?q=budget    # Search
-   GET /api/v1/reports/weekly     # Weekly report
+   GET /api/v1/meetings?sort=date # Sorting by date, title
+   GET /api/v1/search?q=budget    # Search by title/summary
+   POST /api/v1/meetings/{id}/title  # Update title
    ```
 
 3. **Mobile-First Frontend** (Phase 2)
+   - Add title input during/after recording
+   - Show title in meeting list
+   - Display title prominently in summary view
+   - Allow editing title after creation
    - Don't build desktop then shrink
    - Build mobile then expand
    - Use responsive framework (Bootstrap already good)
    - Consider React for state management
 
-4. **Weekly Report Feature** (Phase 3)
-   - Aggregate meetings by week
-   - Calculate statistics
-   - Format as shareable report
-   - PDF export
+4. **Meeting Title Feature** (Phase 1-2)
+   - User sets title when uploading/recording
+   - Auto-suggest title from meeting content (optional)
+   - Display title throughout app (list, summary, reports)
 
 ---
 
@@ -308,20 +311,22 @@ class Meeting(db.Model):
 
 ```
 PHASE 1 ADJUSTMENTS:
-☐ Add database fields (meeting_type, attendees, duration, week_number, topics)
-☐ Add API query parameters (filtering, sorting, search)
-☐ Design for aggregation queries
+☐ Add database fields (title, meeting_type optional, attendees optional, duration, topics optional)
+☐ Add title input to /process endpoint
+☐ Add title field update endpoint
+☐ Design for title display throughout app
 
 PHASE 2 CHANGES:
 ☐ Multi-page routing (not single page!)
 ☐ Mobile-first responsive design
 ☐ Navigation component
+☐ Title display/editing in UI
 ☐ Consider React vs vanilla JS
 
 PHASE 3 ADDITIONS:
-☐ Search functionality
-☐ Weekly report aggregation
-☐ Filtering by type/date/language
+☐ Search functionality (by title and summary)
+☐ Filter by type/date/language
+☐ Title editing after meeting created
 ☐ (Keep email/file export)
 
 PHASE 4 MOBILE:
